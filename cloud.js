@@ -208,8 +208,8 @@ function start(){
     if(!n)return;
     try{localStorage.setItem(flag,'1')}catch(e){}
     if(db.tasks.length)return; // account already has tasks; use Import for anything else
-    if(confirm(`This browser has ${n} task(s) saved from before you signed in.\n\nUpload them to your account so they're available everywhere?`))
-      importTasks(local.tasks).then(()=>toast(`Uploaded ${n} task(s)`),e=>{console.error(e);toast('Upload failed — use Export / Import instead')});
+    ask(`This browser has ${n} task(s) saved from before you signed in. Upload them to your account so they're available on every device?`,{title:'Upload your tasks?',ok:'Upload'}).then(yes=>yes&&
+      importTasks(local.tasks).then(()=>toast(`Uploaded ${n} task(s)`),e=>{console.error(e);toast('Upload failed — use Export / Import instead')}));
   }
 
   /* ---------- account menu ---------- */
@@ -225,7 +225,7 @@ function start(){
     const boards=sharedList().filter(b=>b.uid!==u.uid);
     return `<span class="sync" id="syncStatus">${ui.ro?'':'Saved'}</span>
       ${ui.ro?'':`<button class="btn" data-act="share">Share</button>`}
-      <details class="acct"><summary><span class="avatar">${av}</span>${esc(name.split(' ')[0])}</summary>
+      <details class="dd acct"><summary><span class="avatar">${av}</span>${esc(name.split(' ')[0])}</summary>
       <div class="menu">
         <div class="lbl">Signed in as</div><div style="padding:0 10px 6px;font-size:12px;color:var(--muted);word-break:break-all">${esc(u.email||'')}</div><hr>
         <div class="lbl">Boards</div>
@@ -236,7 +236,6 @@ function start(){
         <button data-act="signOut">Sign out</button>
       </div></details>`;
   }
-  document.addEventListener('click',e=>{if(!e.target.closest('.acct'))document.querySelectorAll('details.acct[open]').forEach(d=>d.open=false)});
 
   /* ---------- sharing ---------- */
   const shareLink=()=>`${base}?board=${Cloud.boardUid}`;
@@ -260,7 +259,7 @@ function start(){
     catch(e){toast('Could not share: '+(e.code||e.message))}
   };
   Cloud.actions.removeViewer=async a=>{
-    const email=a.dataset.email;if(!confirm(`Remove ${email}'s access?`))return;
+    const email=a.dataset.email;if(!await ask(`${email} will no longer be able to see your tasks.`,{title:'Remove access?',ok:'Remove',danger:true}))return;
     try{await updateDoc(boardRef,{viewers:arrayRemove(email)})}catch(e){toast('Could not remove: '+(e.code||e.message))}
   };
   Cloud.actions.copyLink=()=>{
