@@ -1,0 +1,44 @@
+rules_version = '2';
+
+// TaskFlow access rules.
+// boards/{uid}            – one board per owner; `viewers` holds the emails allowed to view it
+// boards/{uid}/tasks/*    – tasks: owner can change, viewers can only read
+// boards/{uid}/remarks/*  – remarks: owner and viewers can add; each person can delete their own (owner can delete any)
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function isOwner(uid) { return signedIn() && request.auth.uid == uid; }
+    function myEmail() { return request.auth.token.email.lower(); }
+    function verified() { return signedIn() && request.auth.token.email_verified == true; }
+    function isViewer(uid) {
+      return verified() &&
+        myEmail() in get(/databases/$(database)/documents/boards/$(uid)).data.viewers;
+    }
+
+    match /boards/{uid} {
+      allow read: if isOwner(uid) || (verified() && myEmail() in resource.data.viewers);
+      allow create, update: if isOwner(uid)
+        && request.resource.data.ownerUid == uid
+        && request.resource.data.viewers is list
+        && request.resource.data.viewers.size() <= 20;
+      allow delete: if false;
+
+      match /tasks/{taskId} {
+        allow read: if isOwner(uid) || isViewer(uid);
+        allow write: if isOwner(uid);
+      }
+
+      match /remarks/{remarkId} {
+        allow read: if isOwner(uid) || isViewer(uid);
+        allow create: if (isOwner(uid) || isViewer(uid))
+          && request.resource.data.keys().hasOnly(['taskId', 'text', 'at', 'authorUid', 'authorEmail', 'authorName'])
+          && request.resource.data.authorUid == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() <= 5000;
+        allow delete: if isOwner(uid) || (isViewer(uid) && resource.data.authorUid == request.auth.uid);
+        allow update: if false;
+      }
+    }
+  }
+}
