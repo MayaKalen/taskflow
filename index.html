@@ -509,8 +509,14 @@ const byId=id=>db.tasks.find(t=>t.id===id);
 const statusOf=id=>STATUSES.find(s=>s.id===id)||STATUSES[0];
 // Tags: free-text labels; each name always gets the same color.
 const TAG_COLORS=['#6366f1','#22c55e','#f59e0b','#ef4444','#06b6d4','#ec4899','#8b5cf6','#14b8a6','#f97316','#84cc16'];
-function tagColor(n){let h=0;for(const c of n.toLowerCase())h=(h*31+c.charCodeAt(0))>>>0;return TAG_COLORS[h%TAG_COLORS.length]}
-const allTags=()=>[...new Set(db.tasks.flatMap(t=>t.tags||[]))].sort((a,b)=>a.localeCompare(b));
+// Ready-made tags, always offered in this order; each gets its own color.
+const PRESET_TAGS=['Sales Activities','Project Work','Client tasks','Client Meetings','Internal communication','Admin Work','Creative Work','New strategies','Miscellaneous'];
+function tagColor(n){
+  const p=PRESET_TAGS.findIndex(x=>x.toLowerCase()===n.toLowerCase());if(p>=0)return TAG_COLORS[p%TAG_COLORS.length];
+  let h=0;for(const c of n.toLowerCase())h=(h*31+c.charCodeAt(0))>>>0;return TAG_COLORS[h%TAG_COLORS.length];
+}
+const usedTags=()=>[...new Set(db.tasks.flatMap(t=>t.tags||[]))].sort((a,b)=>a.localeCompare(b));
+const allTags=()=>[...PRESET_TAGS,...usedTags().filter(n=>!PRESET_TAGS.some(p=>p.toLowerCase()===n.toLowerCase()))];
 const tagPill=(n,x='')=>`<span class="pill tag"><span class="dot" style="background:${tagColor(n)}"></span>${esc(n)}${x}</span>`;
 
 /* ---------- task logic ---------- */
@@ -918,7 +924,7 @@ function reportHTML(){
   if(ui.reportTag&&!byTag.has(ui.reportTag))ui.reportTag=null;
   const rt=ui.reportTag,rows=rt?allRows.filter(r=>rt===NONE?!(r.t.tags||[]).length:(r.t.tags||[]).includes(rt)):allRows;
   const tagPanel=`<div class="panel"><h3>Time by tag · week of ${fmtShort(ws)} – ${fmtShort(days[6])}</h3>
-    ${!allTags().length?`<div class="empty" style="padding:20px 16px;text-align:left">No tags yet. Open a task and add a tag (like “Client A” or “Admin”) to see your time grouped here.</div>`
+    ${!usedTags().length?`<div class="empty" style="padding:20px 16px;text-align:left">No tags yet. Open a task and pick a tag (like “Project Work” or “Admin Work”) to see your time grouped here.</div>`
     :!tagRows.length?`<div class="empty" style="padding:20px 16px;text-align:left">No time tracked this week yet.</div>`
     :`<div class="tbars">${tagRows.map(([n,v])=>`<button class="tbar ${rt===n?'on':''}" data-act="reportTag" data-v="${esc(n)}" title="${rt===n?'Show all tasks':'Show only these tasks below'}">
         <span class="name"><span class="dot" style="background:${n===NONE?'var(--line2)':tagColor(n)}"></span>${n===NONE?'<i>No tag</i>':esc(n)}</span>
@@ -989,7 +995,8 @@ function modalHTML(t){
             ${t.repeat?`<span class="hint-sm">A new copy appears on each matching day</span>`:''}</div>
           <div class="prop full"><label>Tags</label><div class="tags-edit">
             ${(t.tags||[]).map(n=>tagPill(n,ro?'':`<button class="x" data-act="delTag" data-tag="${esc(n)}" title="Remove tag" aria-label="Remove tag ${esc(n)}">${I.xs}</button>`)).join('')}
-            ${ro?((t.tags||[]).length?'':'<span class="hint-sm">No tags</span>'):`<input id="tagInput" list="tagList" placeholder="Add a tag, press Enter" autocomplete="off"><datalist id="tagList">${allTags().filter(n=>!(t.tags||[]).includes(n)).map(n=>`<option value="${esc(n)}">`).join('')}</datalist>`}
+            ${ro?((t.tags||[]).length?'':'<span class="hint-sm">No tags</span>'):`<select id="tagPick" aria-label="Add a tag"><option value="">+ Add tag</option>${allTags().filter(n=>!(t.tags||[]).includes(n)).map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('')}</select>
+              <input id="tagInput" placeholder="or type a new one" autocomplete="off">`}
           </div></div>
         </div>
         <textarea class="m-desc" data-field="desc" placeholder="${ro?'No description':'Add a description…'}" ${ro?'readonly':''}>${esc(t.desc)}</textarea>
@@ -1079,13 +1086,13 @@ function submitQuick(keepOpen){
 }
 function focusQuick(){const q=$('#quickInput');if(q){q.focus();q.scrollIntoView({block:'nearest'})}}
 // Reuses an existing tag's spelling when the name matches ignoring case, so "client a" joins "Client A".
-function addTag(){
-  const el=$('#tagInput'),t=byId(ui.openId);if(!el||!t)return;
+function addTag(el=$('#tagInput')){
+  const t=byId(ui.openId);if(!el||!t)return;
   let v=el.value.trim().replace(/\s+/g,' ').slice(0,40);el.value='';if(!v)return;
   v=allTags().find(n=>n.toLowerCase()===v.toLowerCase())||v;
   t.tags=t.tags||[];
   if(!t.tags.some(n=>n.toLowerCase()===v.toLowerCase())){t.tags.push(v);log(t,'Added tag “'+v+'”');commit()}
-  $('#tagInput')?.focus();
+  $('#'+el.id)?.focus();
 }
 function addSub(){const el=$('#subInput'),t=byId(ui.openId);const v=el.value.trim();if(!v)return;t.subtasks.push({id:uid(),text:v,done:false});log(t,'Added subtask “'+v+'”');el.value='';commit();$('#subInput').focus()}
 function sendRemark(){
@@ -1170,7 +1177,7 @@ document.addEventListener('change',e=>{
   if(el.id==='datePick'){if(el.value){ui.date=el.value;render()}return}
   if(el.id==='importFile'){importFile(el.files[0]);el.value='';return}
   if(ui.ro)return;
-  if(el.id==='tagInput'){addTag();return}
+  if(el.id==='tagInput'||el.id==='tagPick'){addTag(el);return}
   if(el.dataset.chg==='status'){setStatus(byId(el.dataset.id),el.value);commit();return}
   if(el.dataset.chg==='sub'){const t=byId(ui.openId),s=t.subtasks.find(x=>x.id===el.dataset.sid);s.done=el.checked;log(t,`${s.done?'Completed':'Reopened'} subtask “${s.text}”`);commit();return}
   if(!f||!ui.openId)return;
