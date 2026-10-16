@@ -309,6 +309,23 @@ body.running .toast{bottom:84px}
 .prop.full select{max-width:100%}
 .pill.rep{padding:1px 6px}
 .hint-sm{font-size:11px;color:var(--faint)}
+/* tags */
+.pill.tag{background:var(--chip);color:var(--text)}
+.pill.tag .dot{width:7px;height:7px}
+.pill.tag .x{border:none;background:none;padding:0 0 0 2px;color:var(--faint);display:inline-flex;line-height:1}
+.pill.tag .x:hover{color:var(--danger-ink)}
+.tags-edit{display:flex;flex-wrap:wrap;gap:6px;align-items:center;flex:1;min-width:0}
+.prop .tags-edit input{width:150px;max-width:100%}
+.tbars{padding:14px 16px;display:flex;flex-direction:column;gap:6px}
+.tbar{display:grid;grid-template-columns:minmax(90px,170px) 1fr 70px 44px;align-items:center;gap:10px;font-size:12px;border:none;background:none;padding:4px 6px;margin:0 -6px;border-radius:8px;text-align:left}
+.tbar:hover{background:var(--hover)}
+.tbar.on{background:var(--accent-soft)}
+.tbar .track{height:10px;background:var(--chip);border-radius:5px;overflow:hidden}
+.tbar .track i{display:block;height:100%;border-radius:5px}
+.tbar .name{display:flex;align-items:center;gap:6px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.tbar .num{text-align:right;font-variant-numeric:tabular-nums}
+.tbar .pct{color:var(--faint)}
+.panel .note{padding:0 16px 12px;font-size:11px;color:var(--faint)}
 .btn.danger-text{color:var(--danger-ink)}
 @media (pointer:coarse){.card{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}.grip{padding:6px 8px;margin:-6px -8px -4px 0}}
 
@@ -323,6 +340,8 @@ body.running .toast{bottom:84px}
   .search{width:150px}
 }
 @media (max-width:640px){
+  .tbar{grid-template-columns:1fr auto auto;row-gap:5px}
+  .tbar .track{grid-column:1/-1;grid-row:2}
   .top{gap:8px;padding:8px 12px;flex-wrap:nowrap}
   .brand-name,.datenav input[type=date]{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
   .brand{margin:0}
@@ -482,18 +501,23 @@ const CLOUD=!!window.FIREBASE_CONFIG;
 let db=CLOUD?{tasks:[]}:load();
 let ui={view:'board',scope:'day',sideTab:'remarks'};
 try{Object.assign(ui,JSON.parse(localStorage.getItem(UIKEY))||{})}catch(e){}
-Object.assign(ui,{date:today(),search:'',openId:null,quick:null,ro:false});
+Object.assign(ui,{date:today(),search:'',openId:null,quick:null,ro:false,reportTag:null});
 
 function save(){if(CLOUD){window.Cloud?.queue();return}try{localStorage.setItem(KEY,JSON.stringify(db))}catch(e){toast('Could not save — storage is full or blocked')}}
 function saveUi(){try{localStorage.setItem(UIKEY,JSON.stringify({view:ui.view,scope:ui.scope,sideTab:ui.sideTab}))}catch(e){}}
 const byId=id=>db.tasks.find(t=>t.id===id);
 const statusOf=id=>STATUSES.find(s=>s.id===id)||STATUSES[0];
+// Tags: free-text labels; each name always gets the same color.
+const TAG_COLORS=['#6366f1','#22c55e','#f59e0b','#ef4444','#06b6d4','#ec4899','#8b5cf6','#14b8a6','#f97316','#84cc16'];
+function tagColor(n){let h=0;for(const c of n.toLowerCase())h=(h*31+c.charCodeAt(0))>>>0;return TAG_COLORS[h%TAG_COLORS.length]}
+const allTags=()=>[...new Set(db.tasks.flatMap(t=>t.tags||[]))].sort((a,b)=>a.localeCompare(b));
+const tagPill=(n,x='')=>`<span class="pill tag"><span class="dot" style="background:${tagColor(n)}"></span>${esc(n)}${x}</span>`;
 
 /* ---------- task logic ---------- */
 function log(t,text){t.activity.unshift({text,at:Date.now()})}
 function newTask(o){
   const t={id:uid(),title:o.title,desc:'',status:o.status||'todo',priority:o.priority||'med',date:o.date||ui.date,due:'',
-    subtasks:[],comments:[],activity:[],entries:[],running:null,order:Date.now()+Math.random(),createdAt:Date.now()};
+    tags:[],subtasks:[],comments:[],activity:[],entries:[],running:null,order:Date.now()+Math.random(),createdAt:Date.now()};
   log(t,'Created this task');db.tasks.push(t);return t;
 }
 function setStatus(t,s){
@@ -587,7 +611,7 @@ function ensureRecurring(){
   latest.forEach((tpl,sid)=>{
     const id=sid+'_'+day;
     if(day<=tpl.date||byId(id)||(tpl.skips||[]).includes(day)||!repeatsOn(tpl.repeat,tpl.anchor||tpl.date,day))return;
-    const t={id,title:tpl.title,desc:tpl.desc,status:'todo',priority:tpl.priority,date:day,due:'',
+    const t={id,title:tpl.title,desc:tpl.desc,status:'todo',priority:tpl.priority,date:day,due:'',tags:[...(tpl.tags||[])],
       subtasks:tpl.subtasks.map(s=>({id:uid(),text:s.text,done:false})),comments:[],activity:[],entries:[],running:null,
       order:tpl.order,createdAt:Date.now(),repeat:tpl.repeat,seriesId:sid,anchor:tpl.anchor||tpl.date,skips:tpl.skips||[]};
     log(t,'Added automatically · '+REPEAT[tpl.repeat].toLowerCase());
@@ -758,7 +782,7 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden)setTimeout
 
 function visibleTasks(){
   const q=ui.search.trim().toLowerCase();
-  return db.tasks.filter(t=>(ui.scope==='all'||t.date===ui.date)&&(!q||t.title.toLowerCase().includes(q)||t.desc.toLowerCase().includes(q)))
+  return db.tasks.filter(t=>(ui.scope==='all'||t.date===ui.date)&&(!q||t.title.toLowerCase().includes(q)||t.desc.toLowerCase().includes(q)||(t.tags||[]).some(n=>n.toLowerCase().includes(q))))
     .sort((a,b)=>a.order-b.order);
 }
 // Repeating tasks come back on their own, so they're never carried over.
@@ -838,6 +862,7 @@ function cardHTML(t){
     ${t.desc?`<div class="card-desc">${esc(t.desc)}</div>`:''}
     <div class="card-b">
       <span class="pill pri p-${t.priority}">${PRI_SHORT[t.priority]}</span>
+      ${(t.tags||[]).map(n=>tagPill(n)).join('')}
       ${t.repeat?`<span class="pill meta rep" title="${REPEAT[t.repeat]}">${I.repeat}</span>`:''}
       ${ui.scope==='all'?`<span class="pill meta">${I.cal}${fmtShort(t.date)}</span>`:''}
       ${t.due?`<span class="pill meta ${late?'late':''}" title="Due date">${I.cal}Due ${fmtShort(t.due)}</span>`:''}
@@ -884,7 +909,22 @@ function listHTML(tasks){
 }
 function reportHTML(){
   const ws=weekStart(ui.date),days=[...Array(7)].map((_,i)=>addDays(ws,i)),we=addDays(ws,7);
-  const rows=db.tasks.map(t=>({t,w:days.reduce((a,d)=>a+dayTime(t,d),0)})).filter(r=>r.w>0||(r.t.running)).sort((a,b)=>b.w-a.w);
+  const allRows=db.tasks.map(t=>({t,w:days.reduce((a,d)=>a+dayTime(t,d),0)})).filter(r=>r.w>0||(r.t.running)).sort((a,b)=>b.w-a.w);
+  // Time by tag. A task with several tags counts fully under each, so tag shares can add up to more than 100%.
+  const NONE='__none',byTag=new Map();
+  for(const{t,w}of allRows)for(const n of(t.tags?.length?t.tags:[NONE]))byTag.set(n,(byTag.get(n)||0)+w);
+  const weekTotal=allRows.reduce((a,r)=>a+r.w,0),tagRows=[...byTag].sort((a,b)=>(a[0]===NONE)-(b[0]===NONE)||b[1]-a[1]);
+  const maxT=Math.max(1,...byTag.values()),multi=allRows.some(r=>(r.t.tags||[]).length>1);
+  if(ui.reportTag&&!byTag.has(ui.reportTag))ui.reportTag=null;
+  const rt=ui.reportTag,rows=rt?allRows.filter(r=>rt===NONE?!(r.t.tags||[]).length:(r.t.tags||[]).includes(rt)):allRows;
+  const tagPanel=`<div class="panel"><h3>Time by tag · week of ${fmtShort(ws)} – ${fmtShort(days[6])}</h3>
+    ${!allTags().length?`<div class="empty" style="padding:20px 16px;text-align:left">No tags yet. Open a task and add a tag (like “Client A” or “Admin”) to see your time grouped here.</div>`
+    :!tagRows.length?`<div class="empty" style="padding:20px 16px;text-align:left">No time tracked this week yet.</div>`
+    :`<div class="tbars">${tagRows.map(([n,v])=>`<button class="tbar ${rt===n?'on':''}" data-act="reportTag" data-v="${esc(n)}" title="${rt===n?'Show all tasks':'Show only these tasks below'}">
+        <span class="name"><span class="dot" style="background:${n===NONE?'var(--line2)':tagColor(n)}"></span>${n===NONE?'<i>No tag</i>':esc(n)}</span>
+        <span class="track"><i style="width:${v/maxT*100}%;background:${n===NONE?'var(--line2)':tagColor(n)}"></i></span>
+        <span class="num"><b>${fmtHM(v)}</b></span><span class="num pct">${weekTotal?Math.round(v/weekTotal*100):0}%</span></button>`).join('')}</div>
+      <div class="note">Click a tag to see just its tasks below.${multi?' Tasks with more than one tag count under each tag.':''}</div>`}</div>`;
   const wsT=parseDay(ws).getTime(),weT=parseDay(we).getTime();
   const completed=db.tasks.filter(t=>t.completedAt&&t.completedAt>=wsT&&t.completedAt<weT).length;
   const weekTasks=db.tasks.filter(t=>t.date>=ws&&t.date<we);
@@ -897,12 +937,14 @@ function reportHTML(){
       <div class="stat"><div class="k">Completed this week</div><div class="v">${completed}</div></div>
       <div class="stat"><div class="k">Tasks planned this week</div><div class="v">${weekTasks.length}</div></div>
     </div>
-    <div class="panel"><h3>Time by task · week of ${fmtShort(ws)} – ${fmtShort(days[6])}</h3>
+    ${tagPanel}
+    <div class="panel"><h3>Time by task · week of ${fmtShort(ws)} – ${fmtShort(days[6])}${rt?` · ${rt===NONE?'no tag':esc(rt)} <button class="btn sm ghost" data-act="reportTag" data-v="${esc(rt)}">Show all</button>`:''}</h3>
       <table><thead><tr><th>Task</th>${days.map(d=>`<th class="${d===ui.date?'sel':''}">${parseDay(d).toLocaleDateString(undefined,{weekday:'short',day:'numeric'})}</th>`).join('')}<th>Week</th></tr></thead>
-      <tbody>${rows.length?rows.map(({t})=>`<tr><td><a href="#" data-act="open" data-id="${t.id}" style="color:inherit">${esc(t.title)}</a> <span class="dot" style="display:inline-block;background:${statusOf(t.status).color}"></span></td>
+      <tbody>${rows.length?rows.map(({t})=>`<tr><td><a href="#" data-act="open" data-id="${t.id}" style="color:inherit">${esc(t.title)}</a> <span class="dot" style="display:inline-block;background:${statusOf(t.status).color}"></span> ${(t.tags||[]).map(n=>tagPill(n)).join(' ')}</td>
         ${days.map(d=>{const v=dayTime(t,d);return `<td class="num ${v||t.running?'':'zero'}">${T(t.id,'day:'+d)}</td>`}).join('')}
         <td class="num"><b>${T(t.id,'week:'+ws)}</b></td></tr>`).join(''):`<tr><td colspan="9" class="empty" style="text-align:center;padding:24px">No time tracked this week yet. Press ▶ on any task to start tracking.</td></tr>`}</tbody>
-      <tfoot><tr><td>Total</td>${days.map(d=>`<td class="num" data-dt="${d}"></td>`).join('')}<td class="num" data-wt="${ws}"></td></tr></tfoot></table></div>
+      <tfoot><tr><td>Total</td>${rt?days.map(d=>`<td class="num">${fmtDur(rows.reduce((a,r)=>a+dayTime(r.t,d),0))}</td>`).join('')+`<td class="num">${fmtHM(rows.reduce((a,r)=>a+r.w,0))}</td>`
+        :days.map(d=>`<td class="num" data-dt="${d}"></td>`).join('')+`<td class="num" data-wt="${ws}"></td>`}</tr></tfoot></table></div>
     <div class="panel"><h3>Status on ${fmtLong(ui.date)}</h3><div class="sbars">
       ${STATUSES.map(s=>{const n=dayTasks.filter(t=>t.status===s.id).length;return `<div class="sbar"><span>${s.name}</span><div class="track"><i style="width:${n/maxS*100}%;background:${s.color}"></i></div><span class="num">${n}</span></div>`}).join('')}
     </div></div>
@@ -945,6 +987,10 @@ function modalHTML(t){
           <div class="prop"><label>Due date</label><input type="date" data-field="due" value="${t.due}" ${dis}></div>
           <div class="prop full"><label>Repeat</label><select data-field="repeat" ${dis}><option value="">Doesn't repeat</option>${Object.keys(REPEAT).map(k=>`<option value="${k}" ${t.repeat===k?'selected':''}>${REPEAT[k]}</option>`).join('')}</select>
             ${t.repeat?`<span class="hint-sm">A new copy appears on each matching day</span>`:''}</div>
+          <div class="prop full"><label>Tags</label><div class="tags-edit">
+            ${(t.tags||[]).map(n=>tagPill(n,ro?'':`<button class="x" data-act="delTag" data-tag="${esc(n)}" title="Remove tag" aria-label="Remove tag ${esc(n)}">${I.xs}</button>`)).join('')}
+            ${ro?((t.tags||[]).length?'':'<span class="hint-sm">No tags</span>'):`<input id="tagInput" list="tagList" placeholder="Add a tag, press Enter" autocomplete="off"><datalist id="tagList">${allTags().filter(n=>!(t.tags||[]).includes(n)).map(n=>`<option value="${esc(n)}">`).join('')}</datalist>`}
+          </div></div>
         </div>
         <textarea class="m-desc" data-field="desc" placeholder="${ro?'No description':'Add a description…'}" ${ro?'readonly':''}>${esc(t.desc)}</textarea>
 
@@ -982,13 +1028,14 @@ function renderSide(){
 function renderModal(){
   const t=byId(ui.openId);
   if(!t){closeModal();return}
-  const keep={remark:$('#remarkInput')?.value,sub:$('#subInput')?.value,dur:$('#entryDur')?.value};
+  const keep={remark:$('#remarkInput')?.value,sub:$('#subInput')?.value,dur:$('#entryDur')?.value,tag:$('#tagInput')?.value};
   const scroll=$('.m-main')?.scrollTop;
   $('#drawer').innerHTML=modalHTML(t);
   $('#overlay').hidden=false;
   if(keep.remark)$('#remarkInput').value=keep.remark;
   if(keep.sub)$('#subInput').value=keep.sub;
   if(keep.dur)$('#entryDur').value=keep.dur;
+  if(keep.tag)$('#tagInput').value=keep.tag;
   if(scroll)$('.m-main').scrollTop=scroll;
   autosize($('.m-title'));autosize($('.m-desc'));renderSide();tick();
 }
@@ -1031,6 +1078,15 @@ function submitQuick(keepOpen){
   if(ui.quick)focusQuick();
 }
 function focusQuick(){const q=$('#quickInput');if(q){q.focus();q.scrollIntoView({block:'nearest'})}}
+// Reuses an existing tag's spelling when the name matches ignoring case, so "client a" joins "Client A".
+function addTag(){
+  const el=$('#tagInput'),t=byId(ui.openId);if(!el||!t)return;
+  let v=el.value.trim().replace(/\s+/g,' ').slice(0,40);el.value='';if(!v)return;
+  v=allTags().find(n=>n.toLowerCase()===v.toLowerCase())||v;
+  t.tags=t.tags||[];
+  if(!t.tags.some(n=>n.toLowerCase()===v.toLowerCase())){t.tags.push(v);log(t,'Added tag “'+v+'”');commit()}
+  $('#tagInput')?.focus();
+}
 function addSub(){const el=$('#subInput'),t=byId(ui.openId);const v=el.value.trim();if(!v)return;t.subtasks.push({id:uid(),text:v,done:false});log(t,'Added subtask “'+v+'”');el.value='';commit();$('#subInput').focus()}
 function sendRemark(){
   const el=$('#remarkInput'),t=byId(ui.openId);const v=el.value.trim();if(!v)return;
@@ -1066,6 +1122,8 @@ const A={
   mClose:()=>closeModal(),
   mComplete:()=>{const t=byId(ui.openId);setStatus(t,t.status==='done'?'todo':'done');commit()},
   mDelete:()=>deleteTask(byId(ui.openId)),
+  delTag:a=>{const t=byId(ui.openId),n=a.dataset.tag;t.tags=(t.tags||[]).filter(x=>x!==n);log(t,'Removed tag “'+n+'”');commit()},
+  reportTag:a=>{const v=a.dataset.v;ui.reportTag=ui.reportTag===v?null:v;renderView()},
   delSub:a=>{const t=byId(ui.openId),i=t.subtasks.findIndex(s=>s.id===a.dataset.sid);if(i<0)return;const[s]=t.subtasks.splice(i,1);commit();
     toast('Subtask removed',{action:'Undo',ms:5000,onAction:()=>{t.subtasks.splice(i,0,s);commit()}})},
   delEntry:a=>{const t=byId(ui.openId);const e=t.entries.find(x=>x.id===a.dataset.eid);if(!e)return;
@@ -1112,6 +1170,7 @@ document.addEventListener('change',e=>{
   if(el.id==='datePick'){if(el.value){ui.date=el.value;render()}return}
   if(el.id==='importFile'){importFile(el.files[0]);el.value='';return}
   if(ui.ro)return;
+  if(el.id==='tagInput'){addTag();return}
   if(el.dataset.chg==='status'){setStatus(byId(el.dataset.id),el.value);commit();return}
   if(el.dataset.chg==='sub'){const t=byId(ui.openId),s=t.subtasks.find(x=>x.id===el.dataset.sid);s.done=el.checked;log(t,`${s.done?'Completed':'Reopened'} subtask “${s.text}”`);commit();return}
   if(!f||!ui.openId)return;
@@ -1129,6 +1188,7 @@ document.addEventListener('keydown',e=>{
   const id=e.target.id;
   if(id==='quickInput'){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();submitQuick(true)}else if(e.key==='Escape'){ui.quick=null;renderView()}return}
   if(id==='subInput'&&e.key==='Enter'){e.preventDefault();addSub();return}
+  if(id==='tagInput'&&(e.key==='Enter'||e.key===',')){e.preventDefault();addTag();return}
   if(id==='entryDur'&&e.key==='Enter'){e.preventDefault();A.addEntry();return}
   if(id==='remarkInput'&&e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendRemark();return}
   if(e.target.dataset.field==='title'&&e.key==='Enter'){e.preventDefault();e.target.blur();return}
@@ -1164,7 +1224,7 @@ function importFile(file){
     const d=JSON.parse(txt);
     if(!d||!Array.isArray(d.tasks))throw new Error('bad');
     if(!await ask(`Replace your current ${db.tasks.length} task(s) with the ${d.tasks.length} task(s) in this backup?`,{title:'Restore backup?',ok:'Replace tasks',danger:true}))return;
-    d.tasks.forEach(t=>{t.subtasks??=[];t.comments??=[];t.activity??=[];t.entries??=[];t.desc??='';t.due??='';t.priority??='med';t.status??='todo'});
+    d.tasks.forEach(t=>{t.tags??=[];t.subtasks??=[];t.comments??=[];t.activity??=[];t.entries??=[];t.desc??='';t.due??='';t.priority??='med';t.status??='todo'});
     ui.openId=null;$('#overlay').hidden=true;
     if(CLOUD){Cloud.importTasks(d.tasks).then(()=>toast('Backup restored'),()=>toast('Could not restore the backup'));return}
     db=d;commit();toast('Backup restored');

@@ -107,7 +107,7 @@ function start(){
   }
   function toDoc(t){const{comments,...rest}=t;return JSON.parse(JSON.stringify(rest))}
   function fromDoc(id,d){
-    return Object.assign({desc:'',status:'todo',priority:'med',date:today(),due:'',subtasks:[],activity:[],entries:[],running:null,order:0,createdAt:Date.now()},d,{id,comments:remarks.get(id)||[]});
+    return Object.assign({desc:'',tags:[],status:'todo',priority:'med',date:today(),due:'',subtasks:[],activity:[],entries:[],running:null,order:0,createdAt:Date.now()},d,{id,comments:remarks.get(id)||[]});
   }
 
   function applyTasks(snap){
@@ -191,7 +191,7 @@ function start(){
   }
   // Replace every task (and remark) on the board, e.g. from a backup file or this browser's old local data.
   async function importTasks(tasks){
-    const clean=tasks.map(t=>Object.assign({subtasks:[],comments:[],activity:[],entries:[],desc:'',due:'',priority:'med',status:'todo',running:null,order:0,createdAt:Date.now(),date:today()},t));
+    const clean=tasks.map(t=>Object.assign({tags:[],subtasks:[],comments:[],activity:[],entries:[],desc:'',due:'',priority:'med',status:'todo',running:null,order:0,createdAt:Date.now(),date:today()},t));
     const ops=[];
     remarks.forEach(list=>list.forEach(r=>ops.push(b=>b.delete(doc(boardRef,'remarks',r.id)))));
     clean.forEach(t=>t.comments.forEach(c=>ops.push(b=>b.set(doc(collection(boardRef,'remarks')),remarkDoc(t.id,String(c.text||''),c.at||Date.now())))));
