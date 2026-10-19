@@ -218,9 +218,21 @@ main{flex:1;overflow:auto;padding:16px 20px}
 .composer .row{display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:11px;color:var(--faint)}
 
 /* running bar + toast */
-.runbar{position:fixed;right:20px;bottom:20px;background:var(--inverse);color:var(--inverse-ink);border-radius:12px;padding:7px 8px 7px 14px;display:flex;align-items:center;gap:12px;box-shadow:0 10px 30px rgba(0,0,0,.25);z-index:40;max-width:calc(100vw - 40px)}
-.runbar .nm{cursor:pointer;max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.runbar b{font-family:ui-monospace,Consolas,monospace}
+.runbar{position:fixed;right:20px;bottom:20px;background:var(--inverse);color:var(--inverse-ink);border-radius:12px;padding:6px 8px 6px 14px;display:flex;flex-direction:column;gap:2px;box-shadow:0 10px 30px rgba(0,0,0,.25);z-index:40;max-width:calc(100vw - 40px)}
+.rb-row{display:flex;align-items:center;gap:12px;min-height:34px}
+.rb-row+.rb-row{border-top:1px solid rgba(128,128,128,.25)}
+.rb-row.paused{font-size:12px;min-height:30px}
+.rb-row.paused .nm,.rb-row.paused b{opacity:.7}
+.rb-row .ps{width:8px;flex:none;display:grid;place-items:center;opacity:.7}
+.rb-row .rb-x{background:none;border:none;color:inherit;opacity:.6;padding:4px;display:grid;place-items:center;border-radius:6px}
+.rb-row .rb-x:hover{opacity:1;background:rgba(128,128,128,.25)}
+.runbar .btn:not(.primary){background:rgba(128,128,128,.22);border-color:transparent;color:inherit}
+.runbar .btn:not(.primary):hover{background:rgba(128,128,128,.35)}
+.rb-more{font-size:11px;opacity:.6;padding:2px 0 3px}
+.runbar .nm{cursor:pointer;max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
+.runbar b{font-family:ui-monospace,Consolas,monospace;margin-left:auto}
+.timer.paused{border-color:#f59e0b;color:#b45309}
+:root[data-theme=dark] .timer.paused{color:#fbbf24}
 .pulse{width:8px;height:8px;border-radius:50%;background:var(--accent);animation:pulse 1.4s infinite;flex:none}
 @keyframes pulse{50%{opacity:.3}}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--inverse);color:var(--inverse-ink);padding:8px 14px;border-radius:8px;z-index:90;font-size:12px}
@@ -279,12 +291,12 @@ label.search input{border:none;outline:none;background:none;min-width:0;flex:1;w
 .ask h2{margin:0 0 6px;font-size:16px}
 .ask p{margin:0 0 18px;color:var(--muted);word-break:break-word}
 .ask-btns{display:flex;justify-content:flex-end;gap:8px}
-body.running main{padding-bottom:76px}
+body.running main{padding-bottom:calc(var(--rbh,52px) + 24px)}
 
 /* features: undo toast, move sheet, timer check, summary, theme, repeat */
 .toast{display:flex;align-items:center;gap:14px;box-shadow:0 10px 30px rgba(0,0,0,.25);max-width:calc(100vw - 32px)}
 .toast button{border:none;background:none;color:var(--accent);font-weight:600;padding:2px 4px;border-radius:4px}
-body.running .toast{bottom:84px}
+body.running .toast{bottom:calc(var(--rbh,52px) + 32px)}
 .grip{border:none;background:none;padding:2px 4px;margin:-2px -4px 0 0;border-radius:4px;font-size:13px}
 .grip:hover{background:var(--hover);color:var(--muted)}
 .sheet-overlay{z-index:75}
@@ -327,7 +339,7 @@ body.running .toast{bottom:84px}
 .tbar .pct{color:var(--faint)}
 .panel .note{padding:0 16px 12px;font-size:11px;color:var(--faint)}
 .btn.danger-text{color:var(--danger-ink)}
-@media (pointer:coarse){.card{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}.grip{padding:6px 8px;margin:-6px -8px -4px 0}}
+@media (pointer:coarse){.rb-row .rb-x{padding:9px;margin:-4px -4px -4px 0}.card{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}.grip{padding:6px 8px;margin:-6px -8px -4px 0}}
 
 @media (max-width:820px){
   .top,.week,.toolbar{padding-left:16px;padding-right:16px}
@@ -373,11 +385,12 @@ body.running .toast{bottom:84px}
   .add-btn{position:fixed;right:16px;bottom:16px;z-index:41;width:52px;height:52px;border-radius:50%;padding:0;justify-content:center;box-shadow:0 8px 24px rgba(242,99,91,.4)}
   .add-btn span{display:none}
   .add-btn svg{width:22px;height:22px}
-  body.running .add-btn{bottom:78px}
+  body.running .add-btn{bottom:calc(var(--rbh,52px) + 26px)}
   main{padding:12px;scroll-snap-type:x mandatory;scroll-padding:0 12px}
   .col{flex:0 0 86vw;max-width:none;scroll-snap-align:start}
   .runbar{left:12px;right:12px;bottom:12px;max-width:none}
   .runbar .nm{flex:1;max-width:none}
+  .rb-row.paused .nm{max-width:none}
   .overlay{padding:0}
   .drawer{height:100%;border-radius:0}
   .m-head{gap:8px;padding:8px 12px}
@@ -433,6 +446,7 @@ const I={
   carry:svg('<path d="M5 12h14m0 0-5-5m5 5-5 5"/>'),
   play:svg('<path d="M7 4.5v15l13-7.5z"/>',9,true),
   stop:svg('<rect x="6" y="6" width="12" height="12" rx="2"/>',9,true),
+  pause:svg('<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>',9,true),
   dots:svg('<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>',16,true),
   search:svg('<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',13),
   doc:svg('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/>'),
@@ -564,20 +578,27 @@ function dayTime(t,day){
 }
 function totalTime(t){let v=t.entries.reduce((a,e)=>a+(e.end-e.start),0);if(t.running)v+=Date.now()-t.running;return v}
 const dayTotal=day=>db.tasks.reduce((a,t)=>a+dayTime(t,day),0);
+// Only one timer runs at a time. Starting another pauses the current one; paused tasks (`paused` = when)
+// stay in the bottom bar so you can resume them. Stop (or completing the task) clears the paused state.
 function startTimer(t){
-  db.tasks.forEach(x=>{if(x.running&&x!==t)stopTimer(x)});
+  db.tasks.forEach(x=>{if(x.running&&x!==t)pauseTimer(x)});
   if(t.running)return;
-  t.running=Date.now();log(t,'Started timer');
+  const was=t.paused;t.paused=null;
+  t.running=Date.now();log(t,was?'Resumed timer':'Started timer');
   if(t.status==='todo'||t.status==='blocked')setStatus(t,'progress');
 }
-function stopTimer(t){
+function stopTimer(t,how='Stopped'){
+  t.paused=null;
   if(!t.running)return;
   const end=Date.now(),dur=end-t.running;
   if(dur>=1000)t.entries.push({id:uid(),start:t.running,end});
-  t.running=null;log(t,'Stopped timer · tracked '+fmtHM(dur));
+  t.running=null;log(t,how+' timer · tracked '+fmtHM(dur));
 }
+function pauseTimer(t){if(!t.running)return;stopTimer(t,'Paused');t.paused=Date.now()}
 const running=()=>db.tasks.find(t=>t.running);
+const pausedTasks=()=>db.tasks.filter(t=>t.paused&&!t.running).sort((a,b)=>b.paused-a.paused);
 function stopTimerAt(t,end){
+  t.paused=null;
   if(!t.running)return;
   end=Math.max(t.running,Math.min(end,Date.now()));
   if(end-t.running>=1000)t.entries.push({id:uid(),start:t.running,end});
@@ -874,12 +895,12 @@ function cardHTML(t){
       ${t.due?`<span class="pill meta ${late?'late':''}" title="Due date">${I.cal}Due ${fmtShort(t.due)}</span>`:''}
       ${t.subtasks.length?`<span class="pill meta">${I.sub}${subDone}/${t.subtasks.length}</span>`:''}
       ${t.comments.length?`<span class="pill meta">${I.chat}${t.comments.length}</span>`:''}
-      <span class="timer ${t.running?'on':''}" title="Total tracked time">${timerBtn(t)}${T(t.id,'total')}</span>
+      <span class="timer ${t.running?'on':t.paused?'paused':''}" title="Total tracked time">${timerBtn(t)}${T(t.id,'total')}</span>
     </div></article>`;
 }
 function timerBtn(t){
   if(ui.ro)return t.running?'<span class="pulse" style="margin:0 2px 0 5px" title="Timer running"></span>':'<span style="width:6px"></span>';
-  return `<button data-act="timer" data-id="${t.id}" title="${t.running?'Stop':'Start'} timer">${t.running?I.stop:I.play}</button>`;
+  return `<button data-act="timer" data-id="${t.id}" title="${t.running?'Pause':t.paused?'Resume':'Start'} timer">${t.running?I.pause:I.play}</button>`;
 }
 function quickHTML(){return `<div class="quick"><textarea id="quickInput" placeholder="Task title… (paste several lines to add many)"></textarea>
   <div class="hint">Enter to add · Shift+Enter for new line · Esc to cancel</div></div>`}
@@ -906,7 +927,7 @@ function listHTML(tasks){
       <td class="num">${fmtShort(t.date)}</td>
       <td class="num">${t.due?fmtShort(t.due):'—'}</td>
       <td class="num">${T(t.id,'day:'+ui.date)}</td>
-      <td class="num"><span class="timer ${t.running?'on':''}" style="margin:0">${timerBtn(t)}${T(t.id,'total')}</span></td>
+      <td class="num"><span class="timer ${t.running?'on':t.paused?'paused':''}" style="margin:0">${timerBtn(t)}${T(t.id,'total')}</span></td>
       <td><select data-chg="status" data-id="${t.id}" ${ui.ro?'disabled':''}>${STATUSES.map(x=>`<option value="${x.id}" ${x.id===t.status?'selected':''}>${x.name}</option>`).join('')}</select></td>
     </tr>`).join('');
   }
@@ -962,10 +983,16 @@ function renderView(){
   tick();
 }
 function renderRunbar(){
-  const t=running();
-  $('#runbar').innerHTML=t?`<div class="runbar"><span class="pulse"></span><span class="nm" data-act="open" data-id="${t.id}" title="Open task">${esc(t.title)}</span><b>${T(t.id,'total')}</b>
-    ${ui.ro?'':`<button class="btn sm primary" data-act="timer" data-id="${t.id}">${I.stop} Stop</button>`}</div>`:'';
-  document.body.classList.toggle('running',!!t);
+  const t=running(),ps=pausedTasks(),shown=ps.slice(0,3),ro=ui.ro;
+  const stopBtn=x=>ro?'':`<button class="rb-x" data-act="timerStop" data-id="${x.id}" title="Stop — done tracking this for now" aria-label="Stop timer">${I.stop}</button>`;
+  $('#runbar').innerHTML=t||ps.length?`<div class="runbar">
+    ${t?`<div class="rb-row"><span class="pulse"></span><span class="nm" data-act="open" data-id="${t.id}" title="Open task">${esc(t.title)}</span><b>${T(t.id,'total')}</b>
+      ${ro?'':`<button class="btn sm primary" data-act="timer" data-id="${t.id}">${I.pause} Pause</button>`}${stopBtn(t)}</div>`:''}
+    ${shown.map(x=>`<div class="rb-row paused"><span class="ps" title="Paused">${I.pause}</span><span class="nm" data-act="open" data-id="${x.id}" title="Open task">${esc(x.title)}</span><b>${T(x.id,'total')}</b>
+      ${ro?'<span class="hint-sm">Paused</span>':`<button class="btn sm" data-act="timer" data-id="${x.id}">${I.play} Resume</button>`}${stopBtn(x)}</div>`).join('')}
+    ${ps.length>shown.length?`<div class="rb-more">+${ps.length-shown.length} more paused</div>`:''}</div>`:'';
+  document.body.classList.toggle('running',!!(t||ps.length));
+  document.body.style.setProperty('--rbh',($('#runbar .runbar')?.offsetHeight||52)+'px');
   tick();
 }
 
@@ -977,7 +1004,8 @@ function modalHTML(t){
   return `<div class="m-head">
       ${ro?`<span class="ro-banner">👁 View only — you can add remarks</span>`:`<button class="btn ${t.status==='done'?'':'primary'}" data-act="mComplete">${I.check}${t.status==='done'?'Completed — reopen':'Mark Complete'}</button>`}
       <div class="m-timer">${I.clock}<span class="hide-sm"> This day / Total</span> <b>${T(t.id,'day:'+ui.date)}</b> / <b>${T(t.id,'total')}</b>
-        ${ro?(t.running?'<span class="pulse" title="Timer running"></span>':''):`<button class="btn sm ${t.running?'':'primary'}" data-act="timer" data-id="${t.id}">${t.running?I.stop+' Stop':I.play+' Start'}</button>`}</div>
+        ${ro?(t.running?'<span class="pulse" title="Timer running"></span>':t.paused?'<span class="hint-sm">Paused</span>':''):`<button class="btn sm ${t.running?'':'primary'}" data-act="timer" data-id="${t.id}">${t.running?I.pause+' Pause':t.paused?I.play+' Resume':I.play+' Start'}</button>
+          ${t.running||t.paused?`<button class="btn sm" data-act="timerStop" data-id="${t.id}" title="Stop — done tracking this for now">${I.stop} Stop</button>`:''}`}</div>
       <div class="spacer"></div>
       ${ro?'':`<button class="btn icon-btn" data-act="mDelete" title="Delete task">${I.trash}</button>`}
       <button class="btn icon-btn" data-act="mClose" title="Close (Esc)">${I.x}</button>
@@ -1121,7 +1149,8 @@ const A={
   quickAdd:a=>{ui.view='board';ui.quick=a.dataset.status||'todo';render();focusQuick()},
   open:(a,e)=>{e.preventDefault();openTask(a.dataset.id)},
   toggleDone:a=>{const t=byId(a.dataset.id);setStatus(t,t.status==='done'?'todo':'done');commit()},
-  timer:a=>{const t=byId(a.dataset.id);t.running?stopTimer(t):startTimer(t);commit()},
+  timer:a=>{const t=byId(a.dataset.id);t.running?pauseTimer(t):startTimer(t);commit()},
+  timerStop:a=>{const t=byId(a.dataset.id);stopTimer(t);commit()},
   carry:async()=>{const list=carryable();if(!await ask(`Move ${list.length} unfinished task(s) from earlier days to ${fmtLong(ui.date)}?`,{title:'Carry over tasks',ok:'Move tasks'}))return;
     list.forEach(t=>{log(t,`Carried over from ${fmtShort(t.date)} to ${fmtShort(ui.date)}`);t.date=ui.date});commit();toast(`Carried over ${list.length} task(s)`)},
   export:()=>{const b=new Blob([JSON.stringify(db,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`taskflow-backup-${today()}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)},
