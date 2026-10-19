@@ -299,6 +299,9 @@ body.running main{padding-bottom:calc(var(--rbh,52px) + 24px)}
 body.running .toast{bottom:calc(var(--rbh,52px) + 32px)}
 .grip{border:none;background:none;padding:2px 4px;margin:-2px -4px 0 0;border-radius:4px;font-size:13px}
 .grip:hover{background:var(--hover);color:var(--muted)}
+.grip{touch-action:none}
+body.touch-drag main{scroll-snap-type:none}
+body.touch-drag .card.dragging{box-shadow:0 8px 24px rgba(0,0,0,.2)}
 .sheet-overlay{z-index:75}
 .sheet{background:var(--panel);width:min(380px,100%);border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.25);padding:14px;max-height:100%;overflow:auto}
 .sheet h3{margin:2px 4px 10px;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -535,15 +538,20 @@ const tagPill=(n,x='')=>`<span class="pill tag"><span class="dot" style="backgro
 
 /* ---------- task logic ---------- */
 function log(t,text){t.activity.unshift({text,at:Date.now()})}
+let lastOrder=0;
 function newTask(o){
+  lastOrder=Math.max(Date.now(),lastOrder+1); // strictly increasing, so tasks added together keep their order
   const t={id:uid(),title:o.title,desc:'',status:o.status||'todo',priority:o.priority||'med',date:o.date||ui.date,due:'',
-    tags:[],subtasks:[],comments:[],activity:[],entries:[],running:null,order:Date.now()+Math.random(),createdAt:Date.now()};
+    tags:[],subtasks:[],comments:[],activity:[],entries:[],running:null,order:lastOrder,createdAt:Date.now()};
   log(t,'Created this task');db.tasks.push(t);return t;
 }
+// Cards keep the order you set; one that moves to another column or day goes to the bottom of it.
+const colmates=t=>db.tasks.filter(x=>x!==t&&x.status===t.status&&x.date===t.date).sort((a,b)=>a.order-b.order);
+function placeAtEnd(t){t.order=Math.max(0,...colmates(t).map(x=>x.order))+1}
 function setStatus(t,s){
   if(t.status===s)return;
   log(t,`Status: ${statusOf(t.status).name} → ${statusOf(s).name}`);
-  t.status=s;
+  t.status=s;placeAtEnd(t);
   if(s==='done'){stopTimer(t);t.completedAt=Date.now();confetti()}else t.completedAt=null;
 }
 function confetti(){
@@ -679,11 +687,11 @@ function openMoveSheet(id){
     <div class="lbl">Day</div>
     <div class="sheet-opts">${dayBtn(td,'Today')}${dayBtn(tm,'Tomorrow')}<input type="date" data-mv="pick" value="${t.date}" aria-label="Another day"></div>
     <div class="lbl">Position</div>
-    <div class="sheet-opts"><button data-mv="top">${I.up}Top of column</button><button data-mv="bottom">${I.down}Bottom of column</button></div>
+    <div class="sheet-opts"><button data-mv="up">${I.up}Move up</button><button data-mv="down">${I.down}Move down</button><button data-mv="top">${I.up}Top of column</button><button data-mv="bottom">${I.down}Bottom of column</button></div>
     <button class="btn cancel" data-mv="close">Cancel</button></div>`;
   const close=()=>{o.remove();document.removeEventListener('keydown',key,true)};
   const key=e=>{if(e.key==='Escape'){e.stopPropagation();close()}};
-  const moveDay=d=>{if(!d||d===t.date)return close();log(t,`Moved from ${fmtShort(t.date)} to ${fmtShort(d)}`);t.date=d;close();commit();toast('Moved to '+(d===td?'today':d===tm?'tomorrow':fmtShort(d)))};
+  const moveDay=d=>{if(!d||d===t.date)return close();log(t,`Moved from ${fmtShort(t.date)} to ${fmtShort(d)}`);t.date=d;placeAtEnd(t);close();commit();toast('Moved to '+(d===td?'today':d===tm?'tomorrow':fmtShort(d)))};
   o.addEventListener('click',e=>{
     e.stopPropagation();
     const b=e.target.closest('button[data-mv]');
@@ -691,6 +699,12 @@ function openMoveSheet(id){
     const k=b.dataset.mv,col=db.tasks.filter(x=>x.status===t.status&&x.date===t.date&&x!==t).map(x=>x.order);
     if(k==='status'){setStatus(t,b.dataset.v);close();commit();toast('Moved to '+statusOf(b.dataset.v).name)}
     else if(k==='day')moveDay(b.dataset.v);
+    else if(k==='up'||k==='down'){
+      // Step one place and keep the sheet open so it can be tapped again.
+      const list=[...colmates(t),t].sort((a,b)=>a.order-b.order),i=list.indexOf(t),j=i+(k==='up'?-1:1);
+      if(j<0||j>=list.length){toast(k==='up'?'Already at the top':'Already at the bottom');return}
+      [list[i],list[j]]=[list[j],list[i]];list.forEach((x,n)=>x.order=n);commit();
+    }
     else if(k==='top'){t.order=Math.min(0,...col)-1;close();commit()}
     else if(k==='bottom'){t.order=Math.max(0,...col)+1;close();commit()}
     else close();
@@ -1215,7 +1229,7 @@ document.addEventListener('change',e=>{
   if(f==='desc'){log(t,'Updated description');save();renderSide();return}
   if(f==='status')setStatus(t,el.value);
   if(f==='priority'){log(t,`Priority: ${PRI[t.priority]} → ${PRI[el.value]}`);t.priority=el.value}
-  if(f==='date'){if(!el.value){el.value=t.date;return}log(t,`Moved from ${fmtShort(t.date)} to ${fmtShort(el.value)}`);t.date=el.value}
+  if(f==='date'){if(!el.value){el.value=t.date;return}log(t,`Moved from ${fmtShort(t.date)} to ${fmtShort(el.value)}`);t.date=el.value;placeAtEnd(t)}
   if(f==='due'){log(t,el.value?'Due date set to '+fmtShort(el.value):'Removed due date');t.due=el.value}
   if(f==='repeat')setRepeat(t,el.value||null);
   commit();
@@ -1243,16 +1257,64 @@ document.addEventListener('dragend',()=>{document.querySelectorAll('.dragging').
 document.addEventListener('dragover',e=>{
   const z=e.target.closest?.('[data-drop]');if(!z||!dragId)return;e.preventDefault();
   document.querySelectorAll('.over').forEach(c=>c!==z&&c.classList.remove('over'));z.classList.add('over');
-  const card=document.querySelector('.card.dragging');if(!card)return;
-  const after=[...z.querySelectorAll('.card:not(.dragging)')].find(c=>{const r=c.getBoundingClientRect();return e.clientY<r.top+r.height/2});
-  if(after)z.insertBefore(card,after);else{const tail=z.querySelector('.empty,.quick');tail?z.insertBefore(card,tail):z.appendChild(card)}
+  placeDragged(z,e.clientY);
 });
+function placeDragged(z,y){
+  const card=document.querySelector('.card.dragging');if(!card)return;
+  const after=[...z.querySelectorAll('.card:not(.dragging)')].find(c=>{const r=c.getBoundingClientRect();return y<r.top+r.height/2});
+  if(after)z.insertBefore(card,after);else{const tail=z.querySelector('.empty,.quick');tail?z.insertBefore(card,tail):z.appendChild(card)}
+}
+// Status first (it would send the card to the bottom), then the order exactly as dropped.
+function finishDrop(z,id){
+  const t=byId(id);if(!t)return;
+  setStatus(t,z.dataset.drop);
+  [...z.querySelectorAll('.card')].forEach((c,i)=>{const x=byId(c.dataset.id);if(x)x.order=i});
+  commit();
+}
 document.addEventListener('drop',e=>{
   const z=e.target.closest?.('[data-drop]');if(!z||!dragId)return;e.preventDefault();
-  const t=byId(dragId);
-  [...z.querySelectorAll('.card')].forEach((c,i)=>{const x=byId(c.dataset.id);if(x)x.order=i});
-  setStatus(t,z.dataset.drop);commit();
+  finishDrop(z,dragId);
 });
+
+/* touch drag: press and drag a card's ⋮⋮ handle; a tap on it still opens the move sheet */
+let td=null;
+document.addEventListener('pointerdown',e=>{
+  if(e.pointerType==='mouse'||ui.ro)return;
+  const g=e.target.closest?.('.grip');if(!g)return;
+  td={id:g.dataset.id,x:e.clientX,y:e.clientY,on:false,pid:e.pointerId};
+});
+document.addEventListener('pointermove',e=>{
+  if(!td||e.pointerId!==td.pid)return;
+  if(!td.on){
+    if(Math.hypot(e.clientX-td.x,e.clientY-td.y)<8)return;
+    const c=document.querySelector(`.card[data-id="${td.id}"]`);if(!c){td=null;return}
+    td.on=true;c.classList.add('dragging');swallowClick=true;navigator.vibrate?.(10);document.body.classList.add('touch-drag');
+    td.scroll=requestAnimationFrame(autoScroll);
+  }
+  td.cx=e.clientX;td.cy=e.clientY;
+  const z=document.elementFromPoint(e.clientX,e.clientY)?.closest('[data-drop]');
+  document.querySelectorAll('.over').forEach(c=>c!==z&&c.classList.remove('over'));
+  if(z){z.classList.add('over');placeDragged(z,e.clientY)}
+});
+// Scrolls the board sideways and the column up/down while a card is held near an edge.
+function autoScroll(){
+  if(!td?.on)return;
+  const edge=50,b=document.querySelector('main'),z=document.querySelector('.card.dragging')?.closest('[data-drop]');
+  if(b){const r=b.getBoundingClientRect();if(td.cx<r.left+edge)b.scrollLeft-=8;else if(td.cx>r.right-edge)b.scrollLeft+=8}
+  if(z){const r=z.getBoundingClientRect();if(td.cy<r.top+edge)z.scrollTop-=8;else if(td.cy>r.bottom-edge)z.scrollTop+=8}
+  td.scroll=requestAnimationFrame(autoScroll);
+}
+const endTouchDrag=e=>{
+  if(!td||e.pointerId!==td.pid)return;
+  const d=td;td=null;if(!d.on)return;
+  cancelAnimationFrame(d.scroll);document.body.classList.remove('touch-drag');setTimeout(()=>swallowClick=false,100);
+  const c=document.querySelector('.card.dragging'),z=c?.closest('[data-drop]');
+  document.querySelectorAll('.over').forEach(x=>x.classList.remove('over'));
+  if(e.type==='pointercancel'||!z){c?.classList.remove('dragging');renderView();return}
+  finishDrop(z,d.id);
+};
+document.addEventListener('pointerup',endTouchDrag);
+document.addEventListener('pointercancel',endTouchDrag);
 
 function importFile(file){
   if(!file)return;
