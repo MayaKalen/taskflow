@@ -340,6 +340,10 @@ body.touch-drag .card.dragging{box-shadow:0 8px 24px rgba(0,0,0,.2)}
 .tbar .name{display:flex;align-items:center;gap:6px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .tbar .num{text-align:right;font-variant-numeric:tabular-nums}
 .tbar .pct{color:var(--faint)}
+.panel table.daytbl{min-width:0}
+.daytbl th.ses,.daytbl td.ses{text-align:left;color:var(--muted);font-size:12px}
+.daytbl td.ses{min-width:110px}
+.daytbl .pct{font-size:11px;color:var(--faint);font-weight:400}
 .panel .note{padding:0 16px 12px;font-size:11px;color:var(--faint)}
 .btn.danger-text{color:var(--danger-ink)}
 @media (pointer:coarse){.rb-row .rb-x{padding:9px;margin:-4px -4px -4px 0}.card{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}.grip{padding:6px 8px;margin:-6px -8px -4px 0}}
@@ -521,7 +525,7 @@ try{Object.assign(ui,JSON.parse(localStorage.getItem(UIKEY))||{})}catch(e){}
 Object.assign(ui,{date:today(),search:'',openId:null,quick:null,ro:false,reportTag:null});
 
 function save(){if(CLOUD){window.Cloud?.queue();return}try{localStorage.setItem(KEY,JSON.stringify(db))}catch(e){toast('Could not save — storage is full or blocked')}}
-function saveUi(){try{localStorage.setItem(UIKEY,JSON.stringify({view:ui.view,scope:ui.scope,sideTab:ui.sideTab}))}catch(e){}}
+function saveUi(){try{localStorage.setItem(UIKEY,JSON.stringify({view:ui.view,scope:ui.scope,sideTab:ui.sideTab,rperiod:ui.rperiod}))}catch(e){}}
 const byId=id=>db.tasks.find(t=>t.id===id);
 const statusOf=id=>STATUSES.find(s=>s.id===id)||STATUSES[0];
 // Tags: free-text labels; each name always gets the same color.
@@ -886,7 +890,8 @@ function renderToolbar(){
   $('#toolbar').innerHTML=`
     <div class="tabs">${tab('board','Board',I.board)}${tab('list','List',I.list)}${tab('report','Report',I.chart)}</div>
     ${ui.view!=='report'?`<div class="seg"><button class="${ui.scope==='day'?'on':''}" data-act="scope" data-v="day">This day</button><button class="${ui.scope==='all'?'on':''}" data-act="scope" data-v="all">All days</button></div>
-    <label class="search">${I.search}<input id="search" placeholder="Search tasks…" value="${esc(ui.search)}" aria-label="Search tasks">${ui.search?`<button class="x" data-act="clearSearch" title="Clear search" aria-label="Clear search">${I.xs}</button>`:''}</label>`:''}
+    <label class="search">${I.search}<input id="search" placeholder="Search tasks…" value="${esc(ui.search)}" aria-label="Search tasks">${ui.search?`<button class="x" data-act="clearSearch" title="Clear search" aria-label="Clear search">${I.xs}</button>`:''}</label>`
+    :`<div class="seg"><button class="${ui.rperiod==='day'?'on':''}" data-act="rperiod" data-v="day">Day</button><button class="${ui.rperiod!=='day'?'on':''}" data-act="rperiod" data-v="week">Week</button></div>`}
     <div class="spacer"></div>
     ${ui.ro?`<span class="ro-banner">👁 Viewing ${esc(window.Cloud?.ownerName||'shared')}'s tasks · view only — you can add remarks</span>`:`
     ${c&&ui.view!=='report'?`<button class="btn soft" data-act="carry" title="Move unfinished tasks from earlier days to ${fmtShort(ui.date)}">${I.carry}Carry over ${c}<span class="hide-sm">&nbsp;unfinished</span></button>`:''}
@@ -949,7 +954,9 @@ function listHTML(tasks){
   return `<div class="list"><table><thead><tr><th></th><th>Task</th><th>Priority</th><th>Day</th><th>Due</th><th>This day</th><th>Total</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 function reportHTML(){
-  const ws=weekStart(ui.date),days=[...Array(7)].map((_,i)=>addDays(ws,i)),we=addDays(ws,7);
+  const daily=ui.rperiod==='day';
+  const ws=weekStart(ui.date),days=daily?[ui.date]:[...Array(7)].map((_,i)=>addDays(ws,i)),we=addDays(ws,7);
+  const period=daily?fmtLong(ui.date):`week of ${fmtShort(ws)} – ${fmtShort(days[6])}`;
   const allRows=db.tasks.map(t=>({t,w:days.reduce((a,d)=>a+dayTime(t,d),0)})).filter(r=>r.w>0||(r.t.running)).sort((a,b)=>b.w-a.w);
   // Time by tag. A task with several tags counts fully under each, so tag shares can add up to more than 100%.
   const NONE='__none',byTag=new Map();
@@ -958,19 +965,43 @@ function reportHTML(){
   const maxT=Math.max(1,...byTag.values()),multi=allRows.some(r=>(r.t.tags||[]).length>1);
   if(ui.reportTag&&!byTag.has(ui.reportTag))ui.reportTag=null;
   const rt=ui.reportTag,rows=rt?allRows.filter(r=>rt===NONE?!(r.t.tags||[]).length:(r.t.tags||[]).includes(rt)):allRows;
-  const tagPanel=`<div class="panel"><h3>Time by tag · week of ${fmtShort(ws)} – ${fmtShort(days[6])}</h3>
+  const tagPanel=`<div class="panel"><h3>Time by tag · ${period}</h3>
     ${!usedTags().length?`<div class="empty" style="padding:20px 16px;text-align:left">No tags yet. Open a task and pick a tag (like “Project Work” or “Admin Work”) to see your time grouped here.</div>`
-    :!tagRows.length?`<div class="empty" style="padding:20px 16px;text-align:left">No time tracked this week yet.</div>`
+    :!tagRows.length?`<div class="empty" style="padding:20px 16px;text-align:left">No time tracked ${daily?'on this day':'this week'} yet.</div>`
     :`<div class="tbars">${tagRows.map(([n,v])=>`<button class="tbar ${rt===n?'on':''}" data-act="reportTag" data-v="${esc(n)}" title="${rt===n?'Show all tasks':'Show only these tasks below'}">
         <span class="name"><span class="dot" style="background:${n===NONE?'var(--line2)':tagColor(n)}"></span>${n===NONE?'<i>No tag</i>':esc(n)}</span>
         <span class="track"><i style="width:${v/maxT*100}%;background:${n===NONE?'var(--line2)':tagColor(n)}"></i></span>
         <span class="num"><b>${fmtHM(v)}</b></span><span class="num pct">${weekTotal?Math.round(v/weekTotal*100):0}%</span></button>`).join('')}</div>
       <div class="note">Click a tag to see just its tasks below.${multi?' Tasks with more than one tag count under each tag.':''}</div>`}</div>`;
+  const filterChip=rt?` · ${rt===NONE?'no tag':esc(rt)} <button class="btn sm ghost" data-act="reportTag" data-v="${esc(rt)}">Show all</button>`:'';
+  const taskCell=t=>`<td><a href="#" data-act="open" data-id="${t.id}" style="color:inherit">${esc(t.title)}</a> <span class="dot" style="display:inline-block;background:${statusOf(t.status).color}"></span> ${(t.tags||[]).map(n=>tagPill(n)).join(' ')}</td>`;
+  if(daily){
+    const d=ui.date,ds=parseDay(d).getTime(),de=ds+864e5,dtot=weekTotal;
+    // When each piece of work happened on this day (manual entries have no clock time).
+    const sessions=t=>[...t.entries.filter(e=>e.end>ds&&e.start<de).sort((a,b)=>a.start-b.start)
+        .map(e=>e.manual?'added manually':`${fmtClock(Math.max(e.start,ds))}–${fmtClock(Math.min(e.end,de))}`),
+      ...(t.running&&t.running<de&&Date.now()>ds?[`${fmtClock(Math.max(t.running,ds))}–now`]:[])].join(', ');
+    const done=db.tasks.filter(t=>t.completedAt&&t.completedAt>=ds&&t.completedAt<de).length;
+    return `<div class="report">
+    <div class="stats">
+      <div class="stat"><div class="k">Tracked on ${fmtShort(d)}</div><div class="v" data-dt="${d}"></div></div>
+      <div class="stat"><div class="k">Tasks worked on</div><div class="v">${allRows.length}</div></div>
+      <div class="stat"><div class="k">Completed on ${fmtShort(d)}</div><div class="v">${done}</div></div>
+      <div class="stat"><div class="k">Tasks planned for ${fmtShort(d)}</div><div class="v">${db.tasks.filter(t=>t.date===d).length}</div></div>
+    </div>
+    ${tagPanel}
+    <div class="panel"><h3>Time by task · ${period}${filterChip}</h3>
+      <table class="daytbl"><thead><tr><th>Task</th><th class="ses">When</th><th>Time</th></tr></thead>
+      <tbody>${rows.length?rows.map(({t,w})=>`<tr>${taskCell(t)}<td class="ses">${sessions(t)}</td>
+        <td class="num"><b>${T(t.id,'day:'+d)}</b><div class="pct">${dtot?Math.round(w/dtot*100):0}%</div></td></tr>`).join('')
+        :`<tr><td colspan="3" class="empty" style="text-align:center;padding:24px">No time tracked on this day. Press ▶ on any task to start tracking.</td></tr>`}</tbody>
+      <tfoot><tr><td>Total</td><td></td>${rt?`<td class="num">${fmtDur(rows.reduce((a,r)=>a+r.w,0))}</td>`:`<td class="num" data-dt="${d}"></td>`}</tr></tfoot></table></div>
+    ${statusPanel()}
+  </div>`;
+  }
   const wsT=parseDay(ws).getTime(),weT=parseDay(we).getTime();
   const completed=db.tasks.filter(t=>t.completedAt&&t.completedAt>=wsT&&t.completedAt<weT).length;
   const weekTasks=db.tasks.filter(t=>t.date>=ws&&t.date<we);
-  const dayTasks=db.tasks.filter(t=>t.date===ui.date);
-  const maxS=Math.max(1,...STATUSES.map(s=>dayTasks.filter(t=>t.status===s.id).length));
   return `<div class="report">
     <div class="stats">
       <div class="stat"><div class="k">Tracked this week</div><div class="v" data-wt="${ws}"></div></div>
@@ -979,17 +1010,22 @@ function reportHTML(){
       <div class="stat"><div class="k">Tasks planned this week</div><div class="v">${weekTasks.length}</div></div>
     </div>
     ${tagPanel}
-    <div class="panel"><h3>Time by task · week of ${fmtShort(ws)} – ${fmtShort(days[6])}${rt?` · ${rt===NONE?'no tag':esc(rt)} <button class="btn sm ghost" data-act="reportTag" data-v="${esc(rt)}">Show all</button>`:''}</h3>
+    <div class="panel"><h3>Time by task · ${period}${filterChip}</h3>
       <table><thead><tr><th>Task</th>${days.map(d=>`<th class="${d===ui.date?'sel':''}">${parseDay(d).toLocaleDateString(undefined,{weekday:'short',day:'numeric'})}</th>`).join('')}<th>Week</th></tr></thead>
-      <tbody>${rows.length?rows.map(({t})=>`<tr><td><a href="#" data-act="open" data-id="${t.id}" style="color:inherit">${esc(t.title)}</a> <span class="dot" style="display:inline-block;background:${statusOf(t.status).color}"></span> ${(t.tags||[]).map(n=>tagPill(n)).join(' ')}</td>
+      <tbody>${rows.length?rows.map(({t})=>`<tr>${taskCell(t)}
         ${days.map(d=>{const v=dayTime(t,d);return `<td class="num ${v||t.running?'':'zero'}">${T(t.id,'day:'+d)}</td>`}).join('')}
         <td class="num"><b>${T(t.id,'week:'+ws)}</b></td></tr>`).join(''):`<tr><td colspan="9" class="empty" style="text-align:center;padding:24px">No time tracked this week yet. Press ▶ on any task to start tracking.</td></tr>`}</tbody>
       <tfoot><tr><td>Total</td>${rt?days.map(d=>`<td class="num">${fmtDur(rows.reduce((a,r)=>a+dayTime(r.t,d),0))}</td>`).join('')+`<td class="num">${fmtHM(rows.reduce((a,r)=>a+r.w,0))}</td>`
         :days.map(d=>`<td class="num" data-dt="${d}"></td>`).join('')+`<td class="num" data-wt="${ws}"></td>`}</tr></tfoot></table></div>
-    <div class="panel"><h3>Status on ${fmtLong(ui.date)}</h3><div class="sbars">
-      ${STATUSES.map(s=>{const n=dayTasks.filter(t=>t.status===s.id).length;return `<div class="sbar"><span>${s.name}</span><div class="track"><i style="width:${n/maxS*100}%;background:${s.color}"></i></div><span class="num">${n}</span></div>`}).join('')}
-    </div></div>
+    ${statusPanel()}
   </div>`;
+}
+function statusPanel(){
+  const dayTasks=db.tasks.filter(t=>t.date===ui.date);
+  const maxS=Math.max(1,...STATUSES.map(s=>dayTasks.filter(t=>t.status===s.id).length));
+  return `<div class="panel"><h3>Status on ${fmtLong(ui.date)}</h3><div class="sbars">
+      ${STATUSES.map(s=>{const n=dayTasks.filter(t=>t.status===s.id).length;return `<div class="sbar"><span>${s.name}</span><div class="track"><i style="width:${n/maxS*100}%;background:${s.color}"></i></div><span class="num">${n}</span></div>`}).join('')}
+    </div></div>`;
 }
 function renderView(){
   const tasks=visibleTasks();
@@ -1173,6 +1209,7 @@ const A={
   mComplete:()=>{const t=byId(ui.openId);setStatus(t,t.status==='done'?'todo':'done');commit()},
   mDelete:()=>deleteTask(byId(ui.openId)),
   delTag:a=>{const t=byId(ui.openId),n=a.dataset.tag;t.tags=(t.tags||[]).filter(x=>x!==n);log(t,'Removed tag “'+n+'”');commit()},
+  rperiod:a=>{ui.rperiod=a.dataset.v;saveUi();render()},
   reportTag:a=>{const v=a.dataset.v;ui.reportTag=ui.reportTag===v?null:v;renderView()},
   delSub:a=>{const t=byId(ui.openId),i=t.subtasks.findIndex(s=>s.id===a.dataset.sid);if(i<0)return;const[s]=t.subtasks.splice(i,1);commit();
     toast('Subtask removed',{action:'Undo',ms:5000,onAction:()=>{t.subtasks.splice(i,0,s);commit()}})},
