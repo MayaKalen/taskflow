@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TaskFlow</title>
 <meta name="theme-color" content="#ffffff">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <script>
 // Apply the saved theme before first paint so there's no light flash in dark mode.
 (function(){try{var t=localStorage.getItem('taskflow.theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}})();
@@ -542,6 +544,13 @@ const tagPill=(n,x='')=>`<span class="pill tag"><span class="dot" style="backgro
 
 /* ---------- task logic ---------- */
 function log(t,text){t.activity.unshift({text,at:Date.now()})}
+/* ---------- installable app ---------- */
+// Chrome/Edge offer installing; we keep the offer so the ⋯ menu can show "Install app".
+let installPrompt=null;
+addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;render()});
+addEventListener('appinstalled',()=>{installPrompt=null;render();toast('TaskFlow installed — find it in your Start menu')});
+if('serviceWorker' in navigator&&location.protocol==='https:')navigator.serviceWorker.register('sw.js').catch(e=>console.warn(e));
+
 let lastOrder=0;
 function newTask(o){
   lastOrder=Math.max(Date.now(),lastOrder+1); // strictly increasing, so tasks added together keep their order
@@ -860,6 +869,7 @@ function renderTop(){
         <div class="lbl">Theme</div>
         <div class="seg theme">${['system','light','dark'].map(v=>`<button data-act="theme" data-v="${v}" class="${theme()===v?'on':''}">${v[0].toUpperCase()+v.slice(1)}</button>`).join('')}</div>
         <hr>
+        ${installPrompt?`<button data-act="install">${I.down}Install app on this device</button>`:''}
         <button data-act="summary">${I.doc}Daily summary</button>
         <button data-act="export">${I.down}Export backup</button>
         ${ui.ro?'':`<button data-act="import">${I.up}Import backup</button>`}
@@ -1203,6 +1213,7 @@ const A={
   timerStop:a=>{const t=byId(a.dataset.id);stopTimer(t);commit()},
   carry:async()=>{const list=carryable();if(!await ask(`Move ${list.length} unfinished task(s) from earlier days to ${fmtLong(ui.date)}?`,{title:'Carry over tasks',ok:'Move tasks'}))return;
     list.forEach(t=>{log(t,`Carried over from ${fmtShort(t.date)} to ${fmtShort(ui.date)}`);t.date=ui.date});commit();toast(`Carried over ${list.length} task(s)`)},
+  install:async()=>{const p=installPrompt;if(!p)return;installPrompt=null;await p.prompt();render()},
   export:()=>{const b=new Blob([JSON.stringify(db,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`taskflow-backup-${today()}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)},
   import:()=>$('#importFile').click(),
   mClose:()=>closeModal(),
